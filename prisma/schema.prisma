@@ -1,0 +1,166 @@
+// Prisma schema for HCAP - VC Fundraising Platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// User model for authentication (Felix + you)
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      String   @default("user") // admin, user
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  contacts     Contact[]
+  interactions Interaction[]
+  activities   Activity[]
+}
+
+// Contact model for CRM
+model Contact {
+  id          String   @id @default(cuid())
+  firstName   String
+  lastName    String
+  email       String?
+  phone       String?
+  company     String?
+  title       String?
+  linkedIn    String?
+
+  // Investor specific fields
+  firmName    String?
+  firmWebsite String?
+  fundSize    String?
+  investmentStage String? // Pre-seed, Seed, Series A, etc.
+  checkSize   String?
+  sectors     String? // JSON array stored as string
+  geography   String?
+
+  // CRM fields
+  status      String   @default("prospect") // prospect, contacted, meeting, interested, passed, invested
+  priority    String   @default("medium") // low, medium, high
+  tags        String? // JSON array stored as string
+  notes       String?
+
+  // Timestamps
+  lastContactedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdById String
+  interactions Interaction[]
+  pipelineStages PipelineStage[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([lastContactedAt])
+}
+
+// Interaction model for tracking all touchpoints
+model Interaction {
+  id          String   @id @default(cuid())
+  type        String   // email, call, meeting, linkedin, event, note
+  subject     String?
+  content     String?
+  outcome     String?
+  sentiment   String?  // positive, neutral, negative
+
+  // Meeting specific
+  meetingDate DateTime?
+  duration    Int?     // minutes
+
+  // Email specific
+  emailSent   Boolean  @default(false)
+  emailOpened Boolean  @default(false)
+  emailReplied Boolean @default(false)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId   String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdById String
+
+  @@index([contactId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// Pipeline stages for fundraising progress
+model PipelineStage {
+  id          String   @id @default(cuid())
+  stage       String   // prospect, intro, first_meeting, diligence, term_sheet, closing, closed
+  enteredAt   DateTime @default(now())
+  exitedAt    DateTime?
+  isActive    Boolean  @default(true)
+  notes       String?
+
+  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId   String
+
+  @@index([contactId])
+  @@index([stage])
+  @@index([isActive])
+}
+
+// Activity log for tracking all system activities
+model Activity {
+  id          String   @id @default(cuid())
+  type        String   // contact_created, interaction_added, stage_changed, etc.
+  description String
+  metadata    String?  // JSON stored as string
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// AI Guidance and Insights
+model Insight {
+  id          String   @id @default(cuid())
+  type        String   // weekly_summary, recommendation, alert
+  title       String
+  content     String
+  priority    String   @default("medium") // low, medium, high, urgent
+  isRead      Boolean  @default(false)
+  isDismissed Boolean  @default(false)
+
+  // AI metadata
+  confidence  Float?   // 0-1 score
+  basedOn     String?  // What data this insight is based on
+
+  createdAt   DateTime @default(now())
+
+  @@index([isRead])
+  @@index([isDismissed])
+  @@index([createdAt])
+}
+
+// Email templates for outreach
+model EmailTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  subject     String
+  body        String
+  category    String?  // intro, follow_up, thank_you, etc.
+  variables   String?  // JSON array of variables like {{firstName}}
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
