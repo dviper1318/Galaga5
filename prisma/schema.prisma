@@ -1,4 +1,4 @@
-// Prisma schema for HCAP - VC Fundraising Platform
+// Prisma schema for HCAP - LP Management Platform
 
 generator client {
   provider = "prisma-client-js"
@@ -9,7 +9,7 @@ datasource db {
   url      = "file:./dev.db"
 }
 
-// User model for authentication (Felix + you)
+// User model for authentication (Felix + team)
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -20,51 +20,84 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relations
-  contacts     Contact[]
+  lps          LP[]
   interactions Interaction[]
   activities   Activity[]
 }
 
-// Contact model for CRM
-model Contact {
+// LP (Limited Partner) model for fund investor management
+model LP {
   id          String   @id @default(cuid())
+
+  // Contact Information
   firstName   String
   lastName    String
   email       String?
   phone       String?
-  company     String?
-  title       String?
   linkedIn    String?
 
-  // Investor specific fields
-  firmName    String?
-  firmWebsite String?
-  fundSize    String?
-  investmentStage String? // Pre-seed, Seed, Series A, etc.
-  checkSize   String?
-  sectors     String? // JSON array stored as string
-  geography   String?
+  // LP Type & Organization
+  lpType      String   @default("individual") // individual, family_office, institution, fund_of_funds
+  organization String? // Organization name if applicable
+  title       String? // Their title/role
 
-  // CRM fields
-  status      String   @default("prospect") // prospect, contacted, meeting, interested, passed, invested
+  // Financial Details
+  commitment       Float?   // Total commitment amount ($)
+  capitalCalled    Float?   @default(0) // Capital called to date
+  capitalDistributed Float? @default(0) // Capital distributed to date
+  ownershipPercent Float?   // Ownership percentage in fund
+  vintage          String?  // Year they joined (e.g., "2024")
+
+  // Investment Preferences
+  investmentFocus  String? // Their areas of interest
+  ticketSize       String? // Typical investment size
+  geography        String? // Geographic focus
+
+  // LP Management fields
+  status      String   @default("prospect") // prospect, contacted, interested, committed, active, inactive, exited
   priority    String   @default("medium") // low, medium, high
   tags        String? // JSON array stored as string
   notes       String?
 
   // Timestamps
   lastContactedAt DateTime?
+  commitmentDate  DateTime? // Date they committed
+  firstCallDate   DateTime? // Date of first capital call
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   // Relations
-  createdBy   User     @relation(fields: [createdById], references: [id])
-  createdById String
-  interactions Interaction[]
+  createdBy      User            @relation(fields: [createdById], references: [id])
+  createdById    String
+  interactions   Interaction[]
   pipelineStages PipelineStage[]
+  commitments    Commitment[]
 
   @@index([status])
   @@index([priority])
+  @@index([lpType])
   @@index([lastContactedAt])
+}
+
+// Commitment tracking for capital calls and distributions
+model Commitment {
+  id              String   @id @default(cuid())
+  type            String   // capital_call, distribution, commitment
+  amount          Float
+  description     String?
+  dueDate         DateTime?
+  paidDate        DateTime?
+  status          String   @default("pending") // pending, paid, overdue
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  lp              LP       @relation(fields: [lpId], references: [id], onDelete: Cascade)
+  lpId            String
+
+  @@index([lpId])
+  @@index([type])
+  @@index([status])
 }
 
 // Interaction model for tracking all touchpoints
@@ -84,34 +117,36 @@ model Interaction {
   emailSent   Boolean  @default(false)
   emailOpened Boolean  @default(false)
   emailReplied Boolean @default(false)
+  gmailMessageId String? // Gmail message ID for syncing
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   // Relations
-  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  contactId   String
+  lp          LP       @relation(fields: [lpId], references: [id], onDelete: Cascade)
+  lpId        String
   createdBy   User     @relation(fields: [createdById], references: [id])
   createdById String
 
-  @@index([contactId])
+  @@index([lpId])
   @@index([type])
   @@index([createdAt])
+  @@index([gmailMessageId])
 }
 
-// Pipeline stages for fundraising progress
+// Pipeline stages for LP fundraising progress
 model PipelineStage {
   id          String   @id @default(cuid())
-  stage       String   // prospect, intro, first_meeting, diligence, term_sheet, closing, closed
+  stage       String   // prospect, contacted, interested, meeting, diligence, committed, active
   enteredAt   DateTime @default(now())
   exitedAt    DateTime?
   isActive    Boolean  @default(true)
   notes       String?
 
-  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  contactId   String
+  lp          LP       @relation(fields: [lpId], references: [id], onDelete: Cascade)
+  lpId        String
 
-  @@index([contactId])
+  @@index([lpId])
   @@index([stage])
   @@index([isActive])
 }
@@ -158,9 +193,28 @@ model EmailTemplate {
   name        String
   subject     String
   body        String
-  category    String?  // intro, follow_up, thank_you, etc.
+  category    String?  // intro, follow_up, thank_you, quarterly_update, capital_call
   variables   String?  // JSON array of variables like {{firstName}}
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// OAuth Integration tokens
+model Integration {
+  id            String   @id @default(cuid())
+  provider      String   // gmail, outlook, google_calendar, linkedin, google_drive
+  accessToken   String
+  refreshToken  String?
+  expiresAt     DateTime?
+  scope         String?
+  email         String?  // Email address connected
+
+  userId        String   @unique
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([provider])
+  @@index([userId])
 }
